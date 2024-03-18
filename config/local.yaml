@@ -1,0 +1,5 @@
+env: "local"
+grpc:
+  port: 44044
+  timeout: 10h
+
