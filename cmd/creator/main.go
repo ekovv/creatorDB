@@ -5,6 +5,8 @@ import (
 	"creatorDB/internal/config"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 const (
@@ -16,11 +18,20 @@ const (
 func main() {
 	cfg := config.MustLoad()
 	log := setupLogger(cfg.Env)
+
 	log.Info("starting application")
 
 	application := app.New(log, cfg.GRPC.Port)
 
-	application.GRPCSrv.MustRun()
+	go application.GRPCSrv.MustRun()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+
+	sign := <-stop
+	log.Info("stopping application", slog.String("signal", sign.String()))
+	application.GRPCSrv.Stop()
+	log.Info("shutting down application")
 }
 
 func setupLogger(env string) *slog.Logger {
