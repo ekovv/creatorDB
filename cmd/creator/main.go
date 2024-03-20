@@ -1,6 +1,7 @@
 package main
 
 import (
+	"creatorDB/internal/app"
 	"creatorDB/internal/config"
 	"log/slog"
 	"os"
@@ -16,6 +17,10 @@ func main() {
 	cfg := config.MustLoad()
 	log := setupLogger(cfg.Env)
 	log.Info("starting application")
+
+	application := app.New(log, cfg.GRPC.Port)
+
+	application.GRPCSrv.MustRun()
 }
 
 func setupLogger(env string) *slog.Logger {
