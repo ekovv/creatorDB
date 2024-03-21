@@ -9,7 +9,7 @@ import (
 )
 
 type Create interface {
-	CreateDB(ctx context.Context, login, password, DbName, DbType string) (string, error)
+	CreateDB(ctx context.Context, login, password, dbName, dbType string) (string, error)
 }
 
 type serverAPI struct {
