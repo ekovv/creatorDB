@@ -21,7 +21,7 @@ func main() {
 
 	log.Info("starting application")
 
-	application := app.New(log, cfg.GRPC.Port)
+	application := app.New(log, cfg.GRPC.Port, *cfg)
 
 	go application.GRPCSrv.MustRun()
 

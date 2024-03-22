@@ -49,10 +49,23 @@ func (s *Storage) CheckConnection() error {
 	return nil
 }
 
-func (s *Storage) SaveConnection(ctx context.Context, login, password, dbName, dbType string) error {
-	query := `INSERT INTO users (login, password, dbName, dbType) VALUES ($1, $2, $3, $4)`
-	_, err := s.conn.ExecContext(ctx, query, login, password, dbName, dbType)
+func (s *Storage) SaveConnection(ctx context.Context, login string, password []byte, dbName, dbType string, connectionString string) error {
+	query := `INSERT INTO users (login, password, dbName, dbType, connectionString) VALUES ($1, $2, $3, $4, $5)`
+	_, err := s.conn.ExecContext(ctx, query, login, password, dbName, dbType, connectionString)
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *Storage) GetConnection(ctx context.Context, login string, dbName, dbType string) (string, []byte, error) {
+	var connectionString string
+	var password []byte
+	query := `SELECT connectionString, password FROM users WHERE login = $1 AND dbName = $2 AND dbType = $3;`
+	err := s.conn.QueryRowContext(ctx, query, login, dbName, dbType).Scan(&connectionString, &password)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return connectionString, password, nil
 }

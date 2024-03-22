@@ -3,12 +3,15 @@ package creator
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"golang.org/x/crypto/bcrypt"
 	"log/slog"
+	"time"
 )
 
 type Creator struct {
@@ -17,8 +20,8 @@ type Creator struct {
 }
 
 type Storage interface {
-	SaveConnection(ctx context.Context, login, password, dbName, dbType string) error
-	GetConnection(ctx context.Context, login, password, dbName, dbType string) (string, error)
+	SaveConnection(ctx context.Context, login string, password []byte, dbName, dbType string, connectionString string) error
+	GetConnection(ctx context.Context, login string, dbName, dbType string) (string, []byte, error)
 }
 
 func New(log *slog.Logger, storage Storage) *Creator {
@@ -31,6 +34,21 @@ func New(log *slog.Logger, storage Storage) *Creator {
 func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType string) (string, error) {
 	const op = "create.CreateDB"
 	log := c.log.With("op", op)
+
+	lastConnString, pass, err := c.storage.GetConnection(ctx, login, dbName, dbType)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+
+		} else {
+			return "", err
+		}
+	}
+	if pass != nil {
+		err = bcrypt.CompareHashAndPassword(pass, []byte(password))
+		if err == nil {
+			return lastConnString, nil
+		}
+	}
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -59,33 +77,36 @@ func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType 
 	if err != nil {
 		return "", err
 	}
-
 	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
 		return "", err
 	}
 
+	time.Sleep(15 * time.Second)
+
+	var port string
 	inspect, err := cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
 		return "", err
 	}
+	ports, ok := inspect.NetworkSettings.Ports["5432/tcp"]
+	if ok && len(ports) > 0 {
+		port = ports[0].HostPort
+	}
 
-	port := inspect.NetworkSettings.Ports["5432/tcp"][0].HostPort
+	connStr := ""
+	if dbType == "postgresql" {
+		connStr = fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable", login, password, port, dbName)
+	}
 
-	connStr := fmt.Sprintf("host=localhost port=%s user=%s password=%s dbname=%s sslmode=disable", port, login, password, dbName)
-	db, err := sql.Open("postgres", connStr)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	err = c.storage.SaveConnection(ctx, login, hashedPassword, dbName, dbType, connStr)
 	if err != nil {
 		return "", err
 	}
 
-	err = c.storage.SaveConnection(ctx, login, password, dbName, dbType)
-	if err != nil {
-		return "", err
-	}
-
-	_, err = db.ExecContext(ctx, "CREATE DATABASE "+dbName+";")
-	if err != nil {
-		return "", err
-	}
 	log.Info("creating database")
 	return connStr, nil
 }
