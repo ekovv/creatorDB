@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/docker/go-connections v0.4.0
-	github.com/ekovv/protosDB v0.0.0-20240318133023-3160513d29a9
+	github.com/ekovv/protosDB v0.0.3
 	github.com/golang-migrate/migrate/v4 v4.17.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/lib/pq v1.10.9

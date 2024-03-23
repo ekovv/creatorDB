@@ -20,8 +20,8 @@ type Creator struct {
 }
 
 type Storage interface {
-	SaveConnection(ctx context.Context, login string, password []byte, dbName, dbType string, connectionString string) error
-	GetConnection(ctx context.Context, login string, dbName, dbType string) (string, []byte, error)
+	SaveConnection(ctx context.Context, user, login string, password []byte, dbName, dbType string, connectionString string) error
+	GetConnection(ctx context.Context, user, login string, dbName, dbType string) (string, []byte, error)
 }
 
 func New(log *slog.Logger, storage Storage) *Creator {
@@ -31,16 +31,16 @@ func New(log *slog.Logger, storage Storage) *Creator {
 	}
 }
 
-func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType string) (string, error) {
+func (c *Creator) CreateDB(ctx context.Context, user, login, password, dbName, dbType string) (string, error) {
 	const op = "create.CreateDB"
 	log := c.log.With("op", op)
 
-	lastConnString, pass, err := c.storage.GetConnection(ctx, login, dbName, dbType)
+	lastConnString, pass, err := c.storage.GetConnection(ctx, user, login, dbName, dbType)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 
 		} else {
-			return "", err
+			return "", fmt.Errorf("error checking last connection")
 		}
 	}
 	if pass != nil {
@@ -52,7 +52,7 @@ func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType 
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create client: %v", err)
 	}
 
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
@@ -78,7 +78,7 @@ func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType 
 		return "", err
 	}
 	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		return "", err
+		return "", fmt.Errorf("error starting container")
 	}
 
 	time.Sleep(15 * time.Second)
@@ -86,7 +86,7 @@ func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType 
 	var port string
 	inspect, err := cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to inspect")
 	}
 	ports, ok := inspect.NetworkSettings.Ports["5432/tcp"]
 	if ok && len(ports) > 0 {
@@ -102,9 +102,9 @@ func (c *Creator) CreateDB(ctx context.Context, login, password, dbName, dbType 
 	if err != nil {
 		return "", err
 	}
-	err = c.storage.SaveConnection(ctx, login, hashedPassword, dbName, dbType, connStr)
+	err = c.storage.SaveConnection(ctx, user, login, hashedPassword, dbName, dbType, connStr)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error saving connection")
 	}
 
 	log.Info("creating database")

@@ -9,7 +9,7 @@ import (
 )
 
 type Create interface {
-	CreateDB(ctx context.Context, login, password, dbName, dbType string) (string, error)
+	CreateDB(ctx context.Context, user, login, password, dbName, dbType string) (string, error)
 }
 
 type serverAPI struct {
@@ -34,7 +34,11 @@ func (s *serverAPI) CreateDB(ctx context.Context, req *createv1.CreateDBRequest)
 		return nil, status.Error((codes.InvalidArgument), "You must provide a name for database")
 	}
 
-	connectionString, err := s.create.CreateDB(ctx, req.GetLogin(), req.GetPassword(), req.GetDbName(), req.GetDbType())
+	if req.GetUser() == "" {
+		return nil, status.Error((codes.InvalidArgument), "You must provide a user")
+	}
+
+	connectionString, err := s.create.CreateDB(ctx, req.GetUser(), req.GetLogin(), req.GetPassword(), req.GetDbName(), req.GetDbType())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "internal error creating")
 	}
