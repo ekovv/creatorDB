@@ -77,6 +77,7 @@ func (c *Creator) CreateDB(ctx context.Context, user, login, password, dbName, d
 	if err != nil {
 		return "", err
 	}
+
 	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
 		return "", fmt.Errorf("error starting container")
 	}
