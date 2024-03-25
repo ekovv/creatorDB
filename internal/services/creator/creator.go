@@ -55,19 +55,39 @@ func (c *Creator) CreateDB(ctx context.Context, user, login, password, dbName, d
 		return "", fmt.Errorf("failed to create client: %v", err)
 	}
 
-	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: "postgres",
-		Env: []string{
+	var image string
+	var env []string
+	var port nat.Port
+	switch dbType {
+	case "postgresql":
+		image = "postgres"
+		env = []string{
 			fmt.Sprintf("POSTGRES_USER=%s", login),
 			fmt.Sprintf("POSTGRES_PASSWORD=%s", password),
 			fmt.Sprintf("POSTGRES_DB=%s", dbName),
-		},
+		}
+		port = "5432/tcp"
+	case "mysql":
+		image = "mysql"
+		env = []string{
+			fmt.Sprintf("MYSQL_USER=%s", login),
+			fmt.Sprintf("MYSQL_PASSWORD=%s", password),
+			fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
+		}
+		port = "3306/tcp"
+	default:
+		return "", fmt.Errorf("unsupported database type: %s", dbType)
+	}
+
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image: image,
+		Env:   env,
 		ExposedPorts: nat.PortSet{
-			"5432/tcp": struct{}{},
+			port: struct{}{},
 		},
 	}, &container.HostConfig{
 		PortBindings: nat.PortMap{
-			"5432/tcp": []nat.PortBinding{
+			port: []nat.PortBinding{
 				{
 					HostIP: "0.0.0.0",
 				},
@@ -84,19 +104,22 @@ func (c *Creator) CreateDB(ctx context.Context, user, login, password, dbName, d
 
 	time.Sleep(15 * time.Second)
 
-	var port string
+	var portStr string
 	inspect, err := cli.ContainerInspect(ctx, resp.ID)
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect")
 	}
-	ports, ok := inspect.NetworkSettings.Ports["5432/tcp"]
+	ports, ok := inspect.NetworkSettings.Ports[port]
 	if ok && len(ports) > 0 {
-		port = ports[0].HostPort
+		portStr = ports[0].HostPort
 	}
 
 	connStr := ""
-	if dbType == "postgresql" {
-		connStr = fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable", login, password, port, dbName)
+	switch dbType {
+	case "postgresql":
+		connStr = fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable", login, password, portStr, dbName)
+	case "mysql":
+		connStr = fmt.Sprintf("%s:%s@tcp(localhost:%s)/%s", login, password, portStr, dbName)
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
