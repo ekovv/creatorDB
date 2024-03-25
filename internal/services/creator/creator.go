@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"golang.org/x/crypto/bcrypt"
+	"io/ioutil"
 	"log/slog"
 	"time"
 )
@@ -70,6 +71,7 @@ func (c *Creator) CreateDB(ctx context.Context, user, login, password, dbName, d
 	case "mysql":
 		image = "mysql"
 		env = []string{
+			fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", password),
 			fmt.Sprintf("MYSQL_USER=%s", login),
 			fmt.Sprintf("MYSQL_PASSWORD=%s", password),
 			fmt.Sprintf("MYSQL_DATABASE=%s", dbName),
@@ -103,6 +105,17 @@ func (c *Creator) CreateDB(ctx context.Context, user, login, password, dbName, d
 	}
 
 	time.Sleep(15 * time.Second)
+
+	out, err := cli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
+	if err != nil {
+		return "", fmt.Errorf("error getting container logs: %v", err)
+	}
+	defer out.Close()
+	logs, err := ioutil.ReadAll(out)
+	if err != nil {
+		return "", fmt.Errorf("error reading container logs: %v", err)
+	}
+	log.Info("Container logs: ", string(logs))
 
 	var portStr string
 	inspect, err := cli.ContainerInspect(ctx, resp.ID)
